@@ -4,17 +4,12 @@ import lombok.*;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
-//@Entity
-//@Setter
-//@Getter
-//@Builder
-@Getter
-@Setter
 @Entity
-@Builder
-@AllArgsConstructor
-@NoArgsConstructor
+@Setter
+@Getter
 @Table(name = "site")
 public class Site {
     @Id
@@ -34,4 +29,9 @@ public class Site {
 
     private String name;
 
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "siteId", cascade = CascadeType.ALL)
+    protected List<Page> pageList = new ArrayList<>();
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "sitePageId", cascade = CascadeType.ALL)
+    protected List<Lemma> lemmaEntityList = new ArrayList<>();
 }

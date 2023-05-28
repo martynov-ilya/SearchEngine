@@ -11,14 +11,14 @@ import searchengine.config.SitesList;
 
 import searchengine.model.Site;
 import searchengine.model.StatusIndexing;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +27,14 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sitesList;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
+
+    private final LemmaRepository lemmaRepository;
+
+    private final IndexRepository indexRepository;
+
+    private final IndexCreator    indexCreator;
+
+    private final LemmaService lemmaService;
 
     private static final String LAST_ERROR_MESSAGE = "Остановлено пользователем";
     private ExecutorService executorService;
@@ -43,6 +51,10 @@ public class IndexingServiceImpl implements IndexingService {
             executorService.submit(
                 new MainPageIndexer(indexedSites, pageRepository,
                         siteRepository,
+                        lemmaRepository,
+                        indexRepository,
+                        indexCreator,
+                        lemmaService,
                         configuration));
        }
         executorService.shutdown();
@@ -59,6 +71,29 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
+    @Override
+    public ResponseEntity<Object> indexingPage(String url) {
+        List<searchengine.config.Site> urlLink = sitesList.getSites();
+        for (searchengine.config.Site site : urlLink) {
+            if (site.getUrl().equals(url)) {
+                executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+                executorService.submit(new MainPageIndexer(site, pageRepository,
+                        siteRepository,
+                        lemmaRepository,
+                        indexRepository,
+                        indexCreator,
+                        lemmaService,
+                        configuration));
+                executorService.shutdown();
+
+                return new ResponseEntity<>(new SimpleResponse(true), HttpStatus.OK);
+            } else {
+                return new ResponseEntity<>(new BadResponse(false, "Не валидная ссылка для индексации"), HttpStatus.BAD_REQUEST);
+            }
+        }
+        return new ResponseEntity<>(new BadResponse(false, "Отсутствует список индексируемых сайтов в файле конфигурации"), HttpStatus.BAD_REQUEST);
+    }
+
     private boolean checkIndexingStatus() {
         List<Site> siteList = siteRepository.findAll();
         for (Site site : siteList) {
@@ -68,5 +103,4 @@ public class IndexingServiceImpl implements IndexingService {
         }
         return false;
     }
-
 }

@@ -11,7 +11,6 @@ import searchengine.model.Site;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -89,14 +88,6 @@ public class SiteIndexer extends RecursiveAction {
             return;
         }
 
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
-        Page pageEntity = Page.builder()
-                .code(statusCode)
-                .siteId(site)
-                .path(url.replaceAll(site.getUrl(), ""))
-                .content(htmlData)
-                .build();
-        pageRepository.save(pageEntity);
+        pageRepository.save(new Page(site,url.replaceAll(site.getUrl(), ""), statusCode, htmlData ));
     }
 }

@@ -2,12 +2,17 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import searchengine.config.Configuration;
-import searchengine.model.Site;
-import searchengine.model.StatusIndexing;
+import searchengine.helpers.IndexSet;
+import searchengine.helpers.LemmasSet;
+import searchengine.model.*;
+import searchengine.repository.IndexRepository;
+import searchengine.repository.LemmaRepository;
 import searchengine.repository.PageRepository;
 import searchengine.repository.SiteRepository;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ForkJoinPool;
 
 @RequiredArgsConstructor
@@ -16,6 +21,10 @@ public class MainPageIndexer implements Runnable{
     private final searchengine.config.Site indexerSite;
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
+    private final LemmaRepository lemmaRepository;
+    private final IndexRepository indexRepository;
+    private final IndexCreator    indexCreator;
+    private final LemmaService lemmaService;
     private final Configuration configuration;
 
     private void setSitePagesToBase(Site site) throws InterruptedException {
@@ -39,11 +48,12 @@ public class MainPageIndexer implements Runnable{
                 delDataSite();
              }
         try {
-        Site site = Site.builder()
-                .name(indexerSite.getName())
-                .url(indexerSite.getUrl())
-                .status(StatusIndexing.INDEXING)
-                .statusTime(LocalDateTime.now()).build();
+            Site site = new Site();
+            site.setUrl(indexerSite.getUrl());
+            site.setName(indexerSite.getName());
+            site.setStatus(StatusIndexing.INDEXING);
+            site.setStatusTime(LocalDateTime.now());
+
         siteRepository.flush();
         siteRepository.save(site);
 
@@ -53,13 +63,56 @@ public class MainPageIndexer implements Runnable{
             site.setStatus(StatusIndexing.INDEXED);
             siteRepository.save(site);
 
-        } catch (InterruptedException e) {
-            Site site = Site.builder()
-                    .lastError("Остановлено пользователем")
-                    .status(StatusIndexing.FAILED)
-                    .statusTime(LocalDateTime.now()).build();
+            setLemmasPageToBase();
+            indexingDataFromSite();
+
+        } catch (InterruptedException ex) {
+
+            Site site = new Site();
+            site.setLastError("Остановлено пользователем");
+            site.setStatus(StatusIndexing.FAILED);
+            site.setStatusTime(LocalDateTime.now());
+
             siteRepository.flush();
             siteRepository.save(site);
+        }
+    }
+
+    private void indexingDataFromSite() throws InterruptedException {
+        if (!Thread.interrupted()) {
+            Site site = siteRepository.findByUrl(indexerSite.getUrl());
+
+            List<IndexSet> indexPageSetList = indexCreator.getIndexPageSet(site);
+            List<SearchIndex> indexList = new CopyOnWriteArrayList<>();
+            site.setStatusTime(LocalDateTime.now());
+            for (IndexSet indexPageSet : indexPageSetList) {
+                Page page = pageRepository.getById(indexPageSet.getPageID());
+                Lemma lemma = lemmaRepository.getById(indexPageSet.getLemmaID());
+                indexList.add(new SearchIndex(page, lemma, indexPageSet.getRank()));
+            }
+            indexRepository.flush();
+            indexRepository.saveAll(indexList);
+            site.setStatusTime(LocalDateTime.now());
+            site.setStatus(StatusIndexing.INDEXED);
+            siteRepository.save(site);
+        } else {
+            throw new InterruptedException();
+        }
+    }
+
+    private void setLemmasPageToBase() {
+        if (!Thread.interrupted()) {
+            Site sitePage = siteRepository.findByUrl(indexerSite.getUrl());
+            sitePage.setStatusTime(LocalDateTime.now());
+            List<LemmasSet> LemmaPageSetList = lemmaService.getLemmasPageSet();
+            List<Lemma> lemmaList = new CopyOnWriteArrayList<>();
+            for (LemmasSet lemmaPageSet : LemmaPageSetList) {
+                lemmaList.add(new Lemma(lemmaPageSet.getLemma(), lemmaPageSet.getFrequency(), sitePage));
+            }
+            lemmaRepository.flush();
+            lemmaRepository.saveAll(lemmaList);
+        } else {
+            throw new RuntimeException();
         }
     }
 
